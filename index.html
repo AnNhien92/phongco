@@ -109,6 +109,7 @@ svg.board{width:100%;height:auto;display:block;border-radius:12px;box-shadow:0 1
       <h3>⚙️ Điều hành bàn</h3>
       <div class="btns"><label class="muted" style="flex:1">Thời gian mỗi bên
         <select id="timeSel"><option value="180">3 phút</option><option value="300" selected>5 phút</option><option value="600">10 phút</option></select></label></div>
+      <label class="muted"><input type="checkbox" id="botMode" style="width:auto"> 🤖 <b>Bot đấu Bot</b> – ghế trống thì 2 bot cao thủ tự vào đánh, có người giơ tay thì bot nhường bàn</label>
       <div class="btns"><button id="newGameBtn">Ván mới</button><button id="kickRBtn" class="ghost">Mời Đỏ rời bàn</button><button id="kickBBtn" class="ghost">Mời Đen rời bàn</button></div>
       <hr style="border:0;border-top:1px solid var(--line);width:100%">
       <h3>📱 Mời người xem vào</h3>
@@ -147,7 +148,7 @@ const LINES = [
   'Hay quá!', 'Tuyệt vời!', 'Nước đi đẳng cấp!',
   'Mọi người nhớ ủng hộ giúp chủ phòng một like và một follow để lấy động lực nhé!',
   'Cảm ơn anh em!', 'Cảm ơn bạn đã tặng quà, chúc bạn đánh cờ thắng liên tục!',
-  'Ván đấu bắt đầu, chúc hai kỳ thủ may mắn!', 'Muốn vào đánh cờ thì mở trình duyệt, gõ địa chỉ trên màn hình, nhập tên rồi bấm giơ tay nhé!', 'Link vào phòng đã ghim trong bình luận nhé anh em!', 'Căng thẳng quá anh em ơi!'
+  'Ván đấu bắt đầu, chúc hai kỳ thủ may mắn!', 'Muốn vào đánh cờ thì mở trình duyệt, gõ địa chỉ trên màn hình, nhập tên rồi bấm giơ tay nhé!', 'Link vào phòng đã ghim trong bình luận nhé anh em!', 'Căng thẳng quá anh em ơi!', 'Anh em đoán xem bên nào thắng, bình luận Đỏ hoặc Đen nhé!', 'Ai đoán đúng thì thả tim cho chủ phòng nhé!'
 ];
 let voices = [];
 function loadVoices(){
@@ -220,7 +221,7 @@ function render(){
   const top = f?'r':'b', bot = f?'b':'r';
   $('seatB').innerHTML=seatHTML(top); $('seatR').innerHTML=seatHTML(bot);
   $('seatB').classList.toggle('turn', g.status==='playing'&&g.turn===top); $('seatR').classList.toggle('turn', g.status==='playing'&&g.turn===bot);
-  $('viewCount').textContent=Object.keys(S.viewers).length;
+  $('viewCount').textContent=Object.keys(S.viewers).filter(id=>!isBot(id)).length;
   const st = g.status==='playing' ? (g.check?'⚠️ Chiếu tướng! ':'')+'Lượt '+(g.turn==='r'?'Đỏ':'Đen')+': '+esc(nameOf(S.seats[g.turn]))
     : g.status==='over' ? '🏁 '+(g.winner? esc(nameOf(S.seats[g.winner])||'')+' thắng'+(g.reason?' ('+g.reason+')':'') : 'Hòa'+(g.reason?' ('+g.reason+')':''))+' – ván mới sẽ bắt đầu ngay'
     : 'Đang chờ đủ 2 kỳ thủ…';
@@ -258,42 +259,82 @@ function commit(fx){ broadcast({t:'state',s:S}); if(fx) broadcast({t:'fx',...fx}
 function broadcast(m){ for(const c of conns.values()) if(c.open) c.send(m); if(m.t==='fx') onFx(m); }
 function hostSeat(id,sd){ if(S.seats[sd]) { toast('Ghế '+(sd==='r'?'Đỏ':'Đen')+' đang có người'); return; } S.queue=S.queue.filter(x=>x!==id); if(S.seats.r===id||S.seats.b===id) return; S.seats[sd]=id; say('Mời '+nameOf(id)+' vào bàn cầm quân '+(sd==='r'?'Đỏ':'Đen')); maybeStart(); commit(); }
 function fillSeats(){ for(const sd of ['r','b']) if(!S.seats[sd] && S.queue.length){ const id=S.queue.shift(); S.seats[sd]=id; say('Mời '+nameOf(id)+' vào bàn cầm quân '+(sd==='r'?'Đỏ':'Đen')); } }
-function maybeStart(){ const g=S.game; if(g.status!=='playing' && S.seats.r && S.seats.b){ S.game=freshGame(+$('timeSel').value); S.game.status='playing'; S.lastTick=Date.now(); say('Ván đấu bắt đầu! '+nameOf(S.seats.r)+' cầm Đỏ, '+nameOf(S.seats.b)+' cầm Đen.'); commit({kind:'start'}); } }
+function maybeStart(){ const g=S.game; if(g.status!=='playing' && S.seats.r && S.seats.b){ S.game=freshGame(+$('timeSel').value); S.game.status='playing'; S.lastTick=Date.now(); const nr=nameOf(S.seats.r).replace('🤖 ',''), nb=nameOf(S.seats.b).replace('🤖 ','');
+    if(isBot(S.seats.r)&&isBot(S.seats.b)){ S.game.clocks={r:600000,b:600000}; S.game.sec=600; say('Ván mới bắt đầu! '+nr+' cầm Đỏ, '+nb+' cầm Đen. Anh em đoán xem bên nào thắng, bình luận Đỏ hoặc Đen nhé!'); }
+    else say('Ván đấu bắt đầu! '+nr+' cầm Đỏ, '+nb+' cầm Đen.'); commit({kind:'start'}); } }
 function endGame(winner, reason){
   const g=S.game; if(g.status!=='playing') return; g.status='over'; g.winner=winner; g.reason=reason; g.drawOffer=null;
   let fx;
   if(winner){ const wid=S.seats[winner], lid=S.seats[winner==='r'?'b':'r']; const wn=nameOf(wid); S.wins[wn]=(S.wins[wn]||0)+1;
     S.king = S.king.id===wid ? {id:wid,streak:S.king.streak+1} : {id:wid,streak:1};
-    say(wn+' thắng rồi! Tuyệt vời! '+(S.king.streak>=2?'Chuỗi '+S.king.streak+' trận thắng!':''));
+    say(wn.replace('🤖 ','')+' thắng rồi! Tuyệt vời! '+(S.king.streak>=2?'Chuỗi '+S.king.streak+' trận thắng!':''));
     fx={kind:'win',text:wn+' thắng!'};
     // người thua rời bàn, người thắng giữ ghế (vua phòng)
     S.seats[winner==='r'?'b':'r']=null;
   } else { say('Ván cờ hòa! Cảm ơn hai kỳ thủ.'); fx={kind:'draw',text:'Hòa cờ'}; const a=S.seats.r,b=S.seats.b; S.seats.r=S.seats.b=null; if(a) S.queue.push(a); if(b) S.queue.push(b); }
-  commit(fx);
-  setTimeout(()=>{ fillSeats(); maybeStart(); commit(); }, 6000);
+  if(!winner){ S.queue=S.queue.filter(x=>!isBot(x)); }
+  commit(fx); S.pendingNext=true;
+  setTimeout(()=>{ S.pendingNext=false; if(S.queue.length){ for(const sd of ['r','b']) if(isBot(S.seats[sd]) && S.queue.length>1) S.seats[sd]=null; }
+    fillSeats(); seatBots(); maybeStart(); commit(); }, 7000);
 }
 function hostHandle(from, m){
   const g=S.game;
   if(m.t==='hello'){ const nm=String(m.name||'Khách').slice(0,20).trim()||'Khách'; const isNew=!S.viewers[from]; S.viewers[from]={name:nm}; delete S.away[from];
     if(isNew && $('autoGreet').checked) say('Chào mừng '+nm+' đã vào phòng cờ An Nhiên!'); commit(isNew?{kind:'join',text:nm+' vừa vào phòng'}:null); return; }
   if(!S.viewers[from]) return;
-  if(m.t==='raise'){ if(!S.queue.includes(from) && S.seats.r!==from && S.seats.b!==from){ S.queue.push(from); say(nameOf(from)+' giơ tay xin đấu!'); fillSeats(); maybeStart(); commit(); } return; }
+  if(m.t==='raise'){ if(!S.queue.includes(from) && S.seats.r!==from && S.seats.b!==from){ S.queue.push(from); say(nameOf(from)+' giơ tay xin đấu!'+((isBot(S.seats.r)||isBot(S.seats.b))&&S.game.status==='playing'?' Hết ván này bot sẽ nhường bàn cho bạn nhé!':'')); fillSeats(); maybeStart(); commit(); } return; }
   if(m.t==='lower'){ S.queue=S.queue.filter(x=>x!==from); commit(); return; }
   const sd = S.seats.r===from?'r':S.seats.b===from?'b':null; if(!sd || g.status!=='playing') return;
-  if(m.t==='move'){
-    if(g.turn!==sd || !XQ.isLegal(g.board,m.f,m.to,sd)) return;
-    tickClock(); const cap=g.board[m.to[0]][m.to[1]];
-    g.board=XQ.apply(g.board,m.f,m.to); g.last={f:m.f,t:m.to}; g.moves++; g.drawOffer=null;
-    const opp = sd==='r'?'b':'r'; g.turn=opp; g.check=XQ.inCheck(g.board,opp);
-    let fx = {kind: cap?'cap':'move'};
-    if(!XQ.hasMoves(g.board,opp)){ commit(fx); endGame(sd, g.check?'chiếu bí':'hết nước đi'); return; }
-    if(g.check){ fx={kind:'check'}; say('Chiếu tướng!'); }
-    else if(cap && /[RNCrnc]/.test(cap)) say('Ăn '+VN[cap.toUpperCase()]+'! Hay quá!');
-    commit(fx); return;
-  }
+  if(m.t==='move'){ doMove(sd,m.f,m.to); return; }
   if(m.t==='resign'){ endGame(sd==='r'?'b':'r','đầu hàng'); return; }
   if(m.t==='draw'){ g.drawOffer=sd; commit({kind:'note',text:nameOf(from)+' xin hòa'}); return; }
   if(m.t==='drawAccept'){ if(g.drawOffer && g.drawOffer!==sd) endGame(null,'thỏa thuận'); return; }
+}
+function doMove(sd,f,to){
+  const g=S.game; if(g.status!=='playing' || g.turn!==sd || !XQ.isLegal(g.board,f,to,sd)) return false;
+  tickClock(); const cap=g.board[to[0]][to[1]];
+  g.board=XQ.apply(g.board,f,to); g.last={f,t:to}; g.moves++; g.drawOffer=null;
+  const opp = sd==='r'?'b':'r'; g.turn=opp; g.check=XQ.inCheck(g.board,opp);
+  let fx = {kind: cap?'cap':'move'};
+  if(!XQ.hasMoves(g.board,opp)){ commit(fx); endGame(sd, g.check?'chiếu bí':'hết nước đi'); return true; }
+  if(g.moves>=200 && isBot(S.seats.r) && isBot(S.seats.b)){ commit(fx); endGame(null,'ván quá dài'); return true; }
+  if(g.check){ fx={kind:'check'}; say(pick(['Chiếu tướng!','Chiếu! Căng quá anh em ơi!','Chiếu tướng! Nước này hiểm!'])); }
+  else if(cap && /[RNCrnc]/.test(cap)) say('Ăn '+VN[cap.toUpperCase()]+'! '+pick(['Hay quá!','Tuyệt vời!','Đẳng cấp!']));
+  commit(fx); return true;
+}
+const pick=a=>a[Math.floor(Math.random()*a.length)];
+/* ---------------- Bot cao thủ ---------------- */
+const BOTS={ 'bot-1':'🤖 Kỳ Vương', 'bot-2':'🤖 Kỳ Thánh' };
+const isBot=id=>!!(id && BOTS[id]);
+let worker=null, botBusy=false, botReq=0;
+function getWorker(){ if(!worker){ try{ worker=new Worker('bot.js'); worker.onmessage=onBotMsg; worker.onerror=()=>{ worker=null; botBusy=false; }; }catch(e){ toast('Không khởi động được bot'); } } return worker; }
+function botOn(){ return $('botMode') && $('botMode').checked; }
+function seatBots(){
+  if(!botOn()) return;
+  for(const id of Object.keys(BOTS)) S.viewers[id]={name:BOTS[id],bot:true};
+  for(const sd of ['r','b']) if(!S.seats[sd] && !S.queue.length){
+    const free=Object.keys(BOTS).find(id=>S.seats.r!==id && S.seats.b!==id); if(free) S.seats[sd]=free;
+  }
+}
+function botTick(){
+  if(botBusy && botTick.ctx && Date.now()-botTick.ctx.t0>9000) botBusy=false;
+  if(!S || botBusy) return; const g=S.game; if(g.status!=='playing') return;
+  const id=S.seats[g.turn]; if(!isBot(id)) return; const w=getWorker(); if(!w) return;
+  botBusy=true; const req=++botReq; botTick.ctx={req,moves:g.moves,turn:g.turn,board:g.board,t0:Date.now()};
+  const both=isBot(S.seats.r)&&isBot(S.seats.b);
+  w.postMessage({id:req, board:g.board, side:g.turn, ms: both?1300:1800, noise: g.moves<12?40:12});
+}
+function onBotMsg(e){
+  const d=e.data, ctx=botTick.ctx; if(!ctx || d.id!==ctx.req){ botBusy=false; return; }
+  const wait=Math.max(0, 1600-(Date.now()-ctx.t0));
+  setTimeout(()=>{ botBusy=false; const g=S.game;
+    if(g.status!=='playing' || g.moves!==ctx.moves || g.turn!==ctx.turn || g.board!==ctx.board) return;
+    if(d.none){ return; }
+    const sd=g.turn, oppId=S.seats[sd==='r'?'b':'r'];
+    if(d.score>1500 && !g.mateSaid){ g.mateSaid=1; say(nameOf(S.seats[sd]).replace('🤖 ','')+' đã thấy đường thắng! Anh em chú ý!'); }
+    else if(d.score>350 && !g['adv'+sd]){ g['adv'+sd]=1; say((sd==='r'?'Bên Đỏ':'Bên Đen')+' đang chiếm ưu thế rồi anh em ơi!'); }
+    doMove(sd,d.from,d.to);
+  }, wait);
 }
 function tickClock(){ const g=S.game; if(g.status!=='playing') return; const now=Date.now(); g.clocks[g.turn]-= now-(S.lastTick||now); S.lastTick=now; }
 function hostLoop(){
@@ -302,7 +343,9 @@ function hostLoop(){
   // người chơi mất kết nối quá 30 giây
   for(const sd of ['r','b']){ const id=S.seats[sd]; if(id && S.away[id] && Date.now()-S.away[id]>30000){ if(g.status==='playing') endGame(sd==='r'?'b':'r','đối thủ rời phòng'); else { S.seats[sd]=null; } } }
   for(const id of Object.keys(S.away)) if(Date.now()-S.away[id]>30000 && S.seats.r!==id && S.seats.b!==id){ delete S.viewers[id]; delete S.away[id]; S.queue=S.queue.filter(x=>x!==id); }
-  commit();
+  if(g.status!=='playing' && !S.pendingNext){ if(!botOn()){ for(const sd of ['r','b']) if(isBot(S.seats[sd])) S.seats[sd]=null; } else { // bot nhường ghế cho người thật đang chờ
+      for(const sd of ['r','b']) if(isBot(S.seats[sd]) && S.queue.length) { S.seats[sd]=null; fillSeats(); } seatBots(); maybeStart(); } }
+  commit(); botTick();
 }
 
 /* ---------------- Hiệu ứng ---------------- */
@@ -329,6 +372,7 @@ function startHost(){
   $('sayBtn').onclick=()=>{ say($('sayIn').value); $('sayIn').value=''; };
   $('sayIn').addEventListener('keydown',e=>{ if(e.key==='Enter'){ say($('sayIn').value); $('sayIn').value=''; } });
   $('voiceSel').onchange=()=>store.set('cv',$('voiceSel').value);
+  $('botMode').onchange=()=>{ if(botOn()){ getWorker(); say('Mời hai cao thủ Kỳ Vương và Kỳ Thánh vào bàn!'); seatBots(); maybeStart(); } commit(); };
   $('newGameBtn').onclick=()=>{ S.game=freshGame(+$('timeSel').value); maybeStart(); commit(); };
   $('kickRBtn').onclick=()=>{ if(S.game.status==='playing') endGame('b','chủ phòng mời rời bàn'); else { S.seats.r=null; fillSeats(); maybeStart(); commit(); } };
   $('kickBBtn').onclick=()=>{ if(S.game.status==='playing') endGame('r','chủ phòng mời rời bàn'); else { S.seats.b=null; fillSeats(); maybeStart(); commit(); } };
@@ -366,6 +410,7 @@ $('landing').classList.remove('hidden');
 $('joinBtn').onclick=()=>{ const n=$('nameIn').value.trim(); if(!n){ toast('Nhập tên trước đã nhé'); $('nameIn').focus(); return; } if(!room){ toast('Hãy mở bằng link chủ phòng gửi (có mã phòng)'); return; } startGuest(n); };
 $('nameIn').addEventListener('keydown',e=>{ if(e.key==='Enter') $('joinBtn').click(); });
 $('createBtn').onclick=()=>{ startHost(); };
+window.__ct={ get S(){ return S; }, endGame:(w,r)=>endGame(w,r) };
 })();
 </script>
 </body>
