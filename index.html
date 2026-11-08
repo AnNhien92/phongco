@@ -35,7 +35,7 @@ input,select{font:inherit;background:#120d0a;color:var(--fg);border:1px solid va
 .brand .seal{font-family:var(--f-pc);background:var(--red);color:#fff;border-radius:6px;padding:0 6px;font-size:18px}
 .pill{display:inline-flex;gap:6px;align-items:center;background:#120d0a;border:1px solid var(--line);border-radius:999px;padding:4px 10px;font-size:13px;color:var(--muted)}
 .dot{width:8px;height:8px;border-radius:50%;background:var(--ok)}
-.boardbox{position:relative;width:100%;max-width:min(100%,calc((100vh - 150px) * .9));margin:0 auto}
+.boardbox{position:relative;width:100%;max-width:min(100%,calc((100vh - 300px) * .9));margin:0 auto}
 svg.board{width:100%;height:auto;display:block;border-radius:12px;box-shadow:0 10px 40px #0008}
 .players{display:flex;justify-content:space-between;gap:8px;align-items:center}
 .seat{flex:1;min-width:0;display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:8px 10px}
@@ -85,6 +85,7 @@ svg.board{width:100%;height:auto;display:block;border-radius:12px;box-shadow:0 1
   <div class="brand"><span class="seal">棋</span><h1>Phòng Cờ An Nhiên</h1><span class="pill"><span class="dot" id="netDot"></span><span id="netTxt">Đang kết nối…</span></span></div>
   <div class="btns" style="flex:0 0 auto"><span class="pill">👀 <b id="viewCount">0</b> người xem</span><span class="pill" id="roomPill">Mã phòng: <b id="roomCode">—</b></span></div>
 </header>
+<div id="liveBar" class="hidden" style="max-width:1400px;margin:0 auto 10px;background:var(--gold);color:#2a1a08;border-radius:12px;padding:8px 14px;font-weight:800;font-size:clamp(16px,2.2vw,26px);text-align:center">♟ Muốn vào đánh? Mở trình duyệt gõ: <span id="liveLink" style="background:#2a1a08;color:var(--gold);border-radius:8px;padding:0 10px">annhien92.github.io/phongco</span> – nhập tên rồi bấm Giơ tay!</div>
 <main class="wrap hidden" id="room">
   <section style="display:grid;gap:10px;min-width:0">
     <div class="players"><div class="seat" id="seatB"></div></div>
@@ -129,7 +130,7 @@ const $ = id => document.getElementById(id);
 const store = { get(k){try{return localStorage.getItem(k)}catch(e){return null}}, set(k,v){try{localStorage.setItem(k,v)}catch(e){}} };
 const params = new URLSearchParams(location.search);
 const PREFIX = 'annhien-cotuong-';
-let room = params.get('room') || (location.hash.length > 1 ? location.hash.slice(1) : '');
+const FIXED='ANNHIEN'; const wantHost = params.has('chu'); let room = params.get('room') || FIXED;
 let isHost = false, peer = null, hostConn = null, myId = null;
 const conns = new Map();            // host: peerId -> conn
 let S = null;                        // shared state (host is authority)
@@ -146,7 +147,7 @@ const LINES = [
   'Hay quá!', 'Tuyệt vời!', 'Nước đi đẳng cấp!',
   'Mọi người nhớ ủng hộ giúp chủ phòng một like và một follow để lấy động lực nhé!',
   'Cảm ơn anh em!', 'Cảm ơn bạn đã tặng quà, chúc bạn đánh cờ thắng liên tục!',
-  'Ván đấu bắt đầu, chúc hai kỳ thủ may mắn!', 'Căng thẳng quá anh em ơi!'
+  'Ván đấu bắt đầu, chúc hai kỳ thủ may mắn!', 'Muốn vào đánh cờ thì mở trình duyệt, gõ địa chỉ trên màn hình, nhập tên rồi bấm giơ tay nhé!', 'Link vào phòng đã ghim trong bình luận nhé anh em!', 'Căng thẳng quá anh em ơi!'
 ];
 let voices = [];
 function loadVoices(){
@@ -319,9 +320,9 @@ function onFx(m){
 function setNet(ok,t){ $('netDot').style.background=ok?'var(--ok)':'#c0262d'; $('netTxt').textContent=t; }
 function send(m){ if(isHost){ hostHandle(myId,m); } else if(hostConn && hostConn.open) hostConn.send(m); else toast('Mất kết nối với phòng, đang thử lại…'); }
 function showRoom(){ $('landing').classList.add('hidden'); $('topbar').classList.remove('hidden'); $('room').classList.remove('hidden'); $('roomCode').textContent=room; }
-function roomLink(){ return location.origin + location.pathname + '?room=' + room; }
+function roomLink(){ return location.origin + location.pathname + (room===FIXED?'':'?room='+room); }
 function startHost(){
-  isHost=true; room = room || Math.random().toString(36).slice(2,7).toUpperCase(); store.set('hostRoom',room);
+  isHost=true; room = params.get('room') || FIXED; $('liveBar').classList.remove('hidden'); $('liveLink').textContent=(location.host+location.pathname).replace(/\/$/,'');
   S=newState(); showRoom(); $('hostCard').classList.remove('hidden');
   loadVoices(); if('speechSynthesis' in window) speechSynthesis.onvoiceschanged=loadVoices;
   LINES.forEach(l=>$('voiceBtns').append(btn('🔊 '+l,'',()=>say(l))));
@@ -360,11 +361,11 @@ function connect(name){
 
 /* ---------------- Khởi động ---------------- */
 $('nameIn').value = store.get('nm') || '';
-if(room){ $('hostBox').classList.add('hidden'); $('landingSub').textContent='Bạn được mời vào phòng '+room+'. Nhập tên để vào xem và thách đấu.'; }
+if(!wantHost){ $('hostBox').classList.add('hidden'); }
 $('landing').classList.remove('hidden');
 $('joinBtn').onclick=()=>{ const n=$('nameIn').value.trim(); if(!n){ toast('Nhập tên trước đã nhé'); $('nameIn').focus(); return; } if(!room){ toast('Hãy mở bằng link chủ phòng gửi (có mã phòng)'); return; } startGuest(n); };
 $('nameIn').addEventListener('keydown',e=>{ if(e.key==='Enter') $('joinBtn').click(); });
-$('createBtn').onclick=()=>{ room = store.get('hostRoom') || ''; startHost(); };
+$('createBtn').onclick=()=>{ startHost(); };
 })();
 </script>
 </body>
