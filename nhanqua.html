@@ -14,6 +14,14 @@ html,body{margin:0;height:100%;background:#0b0806;color:var(--ink);font-family:'
 #stage{position:relative;height:100vh;aspect-ratio:9/16;max-width:calc(100vw - 400px);overflow:hidden;background:#120c08}
 body.full #stage{max-width:100vw}
 body.full #panel{display:none}
+#fab{display:none;position:fixed;right:10px;bottom:12%;z-index:20;width:44px;height:44px;border-radius:50%;padding:0;font-size:20px;background:rgba(0,0,0,.45);border:1px solid rgba(243,207,122,.5)}
+@media (max-width:900px){
+  #stage{max-width:none;width:100vw;height:100vh;height:100dvh;aspect-ratio:auto}
+  #panel{position:fixed;left:0;right:0;bottom:0;width:auto!important;height:62vh!important;z-index:15;transform:translateY(105%);transition:transform .3s;border-left:0;border-top:1px solid var(--line);border-radius:16px 16px 0 0}
+  body.panel #panel{transform:none}
+  body.full #panel{display:flex}
+  #fab{display:block}
+}
 #cv{position:absolute;inset:0;width:100%;height:100%}
 .ov{position:absolute;left:0;right:0;text-align:center;pointer-events:none}
 #hdr{top:3.2%}
@@ -52,6 +60,7 @@ small{color:var(--muted)}
 </style>
 </head>
 <body>
+<button id="fab" aria-label="Bảng điều khiển">⚙️</button>
 <div id="wrap">
   <div id="stage">
     <canvas id="cv"></canvas>
@@ -352,7 +361,18 @@ $('bgIn').onchange=e=>{ const f=e.target.files[0]; if(!f) return; const im=new I
 const toggleFull=()=>{ document.body.classList.toggle('full'); setTimeout(resize,50); };
 $('fullBtn').onclick=toggleFull;
 addEventListener('keydown',e=>{ if((e.key==='h'||e.key==='H') && !/INPUT|SELECT/.test(document.activeElement.tagName)) toggleFull(); });
-$('startBtn').onclick=()=>{ $('startOv').remove(); audioInit(); pending.push({text:LINES[1][1]}); startStory(cur); };
+function unlockAudio(){
+  try{ audioInit(); AC.resume && AC.resume(); }catch(e){}
+  try{ if(navigator.audioSession) navigator.audioSession.type='playback'; }catch(e){}
+  try{ // iPhone: phát 1 file im lặng để không bị nút gạt im lặng tắt tiếng
+    const a=document.createElement('audio'); a.loop=true; a.setAttribute('playsinline','');
+    a.src='data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA='; a.volume=0.01; a.play().catch(()=>{}); window.__keep=a;
+  }catch(e){}
+  try{ if('speechSynthesis' in window){ const u=new SpeechSynthesisUtterance('Xin chào'); u.lang='vi-VN'; u.volume=0.01; speechSynthesis.speak(u); } }catch(e){}
+}
+$('startBtn').onclick=()=>{ $('startOv').remove(); unlockAudio(); loadVoices(); pending.push({text:LINES[1][1]}); setTimeout(()=>startStory(cur),400); };
+$('fab').onclick=()=>document.body.classList.toggle('panel');
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden && AC) AC.resume(); });
 loadVoices(); if('speechSynthesis' in window) speechSynthesis.onvoiceschanged=loadVoices;
 showStory(); resize(); requestAnimationFrame(frame);
 })();
